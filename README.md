@@ -9,7 +9,7 @@ An existing LogicMonitor account. These modules should always be performed on lo
 Usage
 ------------
 Install the modules in ./library directory at the playbook level using `ansible-galaxy install` command. Details can be found [here](https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html#adding-a-module-locally)
-### Example
+#### Example
 ```yaml
 ---
 - src: 'git+https://github.ol.epicgames.net/IT/ansible-modules-logicmonitor.git'
@@ -21,10 +21,10 @@ ansible-galaxy install --roles-path ./library -r requirements.yml
 ```
 
 
-module logicmonitor_device
+Module logicmonitor_device
 ------------
 Module is used to create, update and remove Logicmonitor devices.
-### Module has the following options
+#### Module has the following options
 ```yaml
 options:
   state:
@@ -153,11 +153,11 @@ options:
       name: device-1
       display_name: 'device-1'
 ```
-module logicmonitor_devicegroup
+Module logicmonitor_devicegroup
 ------------
 
 Module is used to create, update and remove Logicmonitor devicegroups.
-### Module has the following options.
+#### Module has the following options.
 ```yaml
 options:
   state:
@@ -220,7 +220,7 @@ options:
     default: false
     choices: [true, false]
 ```
-### Playbook examples
+#### Playbook examples
 ```yaml
 #example of creating a Devicegroup
 - hosts: localhost
