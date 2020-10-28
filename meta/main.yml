@@ -1,0 +1,16 @@
+---
+
+galaxy_info:
+  role_name: 'ansible-modules-logicmonitor'
+  author: 'Davit Madoyan <davit.madoyan@epicgames.com>'
+  description: 'Includes two modules for managing logicmonitor devicegroups and devices'
+  company: 'Epic Games Inc.'
+  license: 'Proprietary'
+  min_ansible_version: 2.9
+  galaxy_tags:
+    - 'monitoring'
+    - 'logicmonitor'
+    - 'module'
+    - 'devicegroup'
+    - 'device'
+dependencies: []
