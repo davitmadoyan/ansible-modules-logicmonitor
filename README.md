@@ -1,14 +1,14 @@
 ansible-modules-logicmonitor
 =========
-Ansible modules for interacting with Logicmonitor API to create/update/remove Logicmonitor devicegroups and devices.
+Ansible modules for interacting with Logicmonitor API to create, update or remove Logicmonitor devicegroups and devices.
 
 Requirements
 ------------
-An existing LogicMonitor account. These modules should always be performed on localhost (one can also use "delegate_to: localhost"). There are no benefits to running these tasks on the remote host since this module mostly preforms API calls to Logicmonitor's API server.
+An existing LogicMonitor account. These modules should always be performed on `localhost` (one can also use `delegate_to: localhost`). There are no benefits to running these tasks on the remote host since this module mostly preforms API calls to Logicmonitor's API server.
 
 Usage
 ------------
-Install the modules in ./library directory at the playbook level using `ansible-galaxy install` command. Details can be found [here](https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html#adding-a-module-locally)
+Install the modules in `./library` directory at the playbook level using `ansible-galaxy install` command. Details can be found [here](https://docs.ansible.com/ansible/latest/dev_guide/developing_locally.html#adding-a-module-locally)
 #### Example
 ```yaml
 ---
@@ -93,7 +93,7 @@ options:
     default: false
     choices: [true, false]
 ```
-### Playbook examples
+#### Playbook examples
 ```yaml
 #example of creating a Device
 - hosts: localhost
