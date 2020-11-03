@@ -146,6 +146,7 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 class Tuning():
+    LM_URL = "logicmonitor.com/santaba/rest"
 
     def __init__(self, params, module):
         """Initializor for the LogicMonitor Tuning class"""
@@ -158,7 +159,6 @@ class Tuning():
         self.company = params["company"]
         self.access_id = params["access_id"]
         self.access_key = params["access_key"]
-        self.lm_url = "logicmonitor.com/santaba/rest"
 
         self.device_displayname = self.params["device_displayname"]
         self.datasource_displayname = self.params["datasource_displayname"]
@@ -173,7 +173,7 @@ class Tuning():
         self.module.debug("Running LogicMonitor.REST API")
 
         #Construct URL
-        url = 'https://' + self.company + "." + self.lm_url + resourcepath
+        url = 'https://' + self.company + "." + self.LM_URL + resourcepath
 
         #Get current time in milliseconds
         epoch = str(int(time.time() * 1000))
@@ -192,20 +192,17 @@ class Tuning():
         #Construct headers and make request
         auth = 'LMv1 ' + self.access_id + ':' + signature.decode() + ':' + epoch
         try:
+            headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
             if "collector" in resourcepath:
-                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
                 response = requests.get(url, data=params_string, headers=headers)
             elif httpverb == "GET":
                 headers = {'Content-Type':'application/json', 'Authorization':auth}
                 response = requests.get(url, data=params_string, headers=headers)
             elif httpverb == "POST":
-                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
                 response = requests.post(url, data=params_string, headers=headers)
             elif httpverb == "DELETE":
-                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
                 response = requests.delete(url, data=params_string, headers=headers)
             elif httpverb == "PUT":
-                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
                 response = requests.put(url, data=params_string, headers=headers)
         except Exception as error:
             self.change = False
@@ -222,22 +219,7 @@ class Tuning():
 
         self.module.debug("Making REST API call to /device/devices endpoint")
         resp = self.rest_api("GET", "/device/devices", "")
-        if resp["status"] == 200:
-            self.module.debug("REST API called succeeded")
-            devices = resp["data"]
-            self.module.debug("Looking for device matching " + self.device_displayname)
-            for device in devices["items"]:
-                if device["displayName"] == self.device_displayname:
-                    self.module.debug("device match found")
-                    return device
-            self.module.debug("No device match found")
-            self.module.fail_json(
-                msg="Error: No device found with the provided name: {}".format(self.device_displayname), changed=self.change, failed=True)
-        self.module.debug("REST API call failed")
-        self.change = False
-        self.module.fail_json(
-            msg="Error: unable to get the devices " +
-            "Error_msg: {}".format(resp), changed=self.change, failed=True)
+        return self.parse_response(resp, "displayName", self.device_displayname)
 
     def get_datasource(self, device_id):
         """Returns a JSON datasource object for the datasource matching the
@@ -246,22 +228,7 @@ class Tuning():
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources endpoint")
         resp = self.rest_api("GET", "/device/devices/{}/devicedatasources".format(device_id), "")
-        if resp["status"] == 200:
-            self.module.debug("REST API called succeeded")
-            datasources = resp["data"]
-            self.module.debug("Looking for datasource matching " + device_id)
-            for datasource in datasources["items"]:
-                if datasource["dataSourceDisplayName"] == self.datasource_displayname:
-                    self.module.debug("Datasource match found")
-                    return datasource
-            self.module.debug("No datasource match found")
-            self.module.fail_json(
-                msg="Error: No datasource found with the provided name: {}".format(self.datasource_displayname), changed=self.change, failed=True)
-        self.module.debug("REST API call failed")
-        self.change = False
-        self.module.fail_json(
-            msg="Error: unable to get the datasources " +
-            "Error_msg: {}".format(resp), changed=self.change, failed=True)
+        return self.parse_response(resp, "dataSourceDisplayName", self.datasource_displayname)
 
     def get_instance(self, device_id, datasource_id):
         """Returns a JSON instance object for the instance matching the
@@ -270,22 +237,7 @@ class Tuning():
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources/datasource_id/instances endpoint")
         resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances".format(device_id, datasource_id), "")
-        if resp["status"] == 200:
-            self.module.debug("REST API called succeeded")
-            instances = resp["data"]
-            self.module.debug("Looking for instance matching " + device_id)
-            for instance in instances["items"]:
-                if instance["displayName"] == self.instance_name:
-                    self.module.debug("Instance match found")
-                    return instance
-            self.module.debug("No instance match found")
-            self.module.fail_json(
-                msg="Error: No instance with the provided name: {}".format(self.instance_name), changed=self.change, failed=True)
-        self.module.debug("REST API call failed")
-        self.change = False
-        self.module.fail_json(
-            msg="Error: unable to get the instances " +
-            "Error_msg: {}".format(resp), changed=self.change, failed=True)
+        return self.parse_response(resp, "displayName", self.instance_name)
 
     def get_datapoint(self, device_id, datasource_id, instance_id):
         """Returns a JSON datapoint object for the datapoint matching the
@@ -294,21 +246,24 @@ class Tuning():
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources/datasource_id/instances/instance_id/alertsettings endpoint")
         resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings".format(device_id, datasource_id, instance_id), "")
+        return self.parse_response(resp, "dataPointName", self.datapoint_name)
+
+    def parse_response(self, resp, matching_key, matching_param):
         if resp["status"] == 200:
             self.module.debug("REST API called succeeded")
-            datapoints = resp["data"]
-            self.module.debug("Looking for datapoint matching " + device_id)
-            for datapoint in datapoints["items"]:
-                if datapoint["dataPointName"] == self.datapoint_name:
-                    self.module.debug("Datapoint match found")
-                    return datapoint
-            self.module.debug("No datapoint match found")
+            items = resp["data"]
+            self.module.debug("Looking for matching to" + matching_param)
+            for item in items["items"]:
+                if item[matching_key] == matching_param:
+                    self.module.debug("Match found")
+                    return item
+            self.module.debug("No match found")
             self.module.fail_json(
-                msg="Error: No datapoint found with the provided name: {}".format(self.datapoint_name), changed=self.change, failed=True)
+                msg="Error: No match found with the provided name: {}".format(matching_param), changed=self.change, failed=True)
         self.module.debug("REST API call failed")
         self.change = False
         self.module.fail_json(
-            msg="Error: unable to get the datapoints " +
+            msg="Error: API call didn't return any data " +
             "Error_msg: {}".format(resp), changed=self.change, failed=True)
 
     def alert_threshold_tuning(self):
@@ -351,23 +306,23 @@ def main():
     """Define available arguments/parameters a user
     can pass to the module"""
 
-    module_args = dict(
-        company=dict(required=True, default=None),
-        access_id=dict(required=True, default=None),
-        access_key=dict(required=True, default=None, no_log=True),
+    module_args = {
+        "company": dict(required=True, default=None),
+        "access_id": dict(required=True, default=None),
+        "access_key": dict(required=True, default=None, no_log=True),
 
-        device_displayname=dict(required=True, default=None),
-        datasource_displayname=dict(required=True, default=None),
-        instance_name=dict(required=True, default=None),
-        datapoint_name=dict(required=False, default=None),
-        alert_disable=dict(required=False, default="false"),
-        threshold=dict(required=False, default=None)
-    )
+        "device_displayname": dict(required=True, default=None),
+        "datasource_displayname": dict(required=True, default=None),
+        "instance_name": dict(required=True, default=None),
+        "datapoint_name": dict(required=False, default=None),
+        "alert_disable": dict(required=False, default="false"),
+        "threshold": dict(required=False, default=None)
+    }
 
-    result = dict(
-        changed=False,
-        message=''
-    )
+    result = {
+        "changed": True,
+        "message": ''
+    }
 
     module = AnsibleModule(
         argument_spec=module_args,
@@ -378,7 +333,6 @@ def main():
 
     output = target.alert_threshold_tuning()
 
-    result["changed"] = True
     result["message"] = output
     module.exit_json(**result)
 
