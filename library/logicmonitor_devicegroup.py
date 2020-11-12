@@ -190,22 +190,21 @@ class Devicegroup():
 
         self.info = self.get_group(self.name)
 
-    def rest_api(self, httpverb, resourcepath, params):
+    def rest_api(self, httpverb, resourcepath, query_params="", data=""):
         """Make a call to the LogicMonitor REST API
         and return the response"""
         self.module.debug("Running LogicMonitor.REST API")
 
         #Construct URL
-        url = 'https://' + self.company + "." + self.lm_url + resourcepath
+        url = 'https://' + self.company + '.' + self.lm_url + resourcepath + query_params
 
         #Get current time in milliseconds
         epoch = str(int(time.time() * 1000))
 
         #Concatenate Request details
-        params_string = ""
-        if isinstance(params, dict):
-            params_string = json.dumps(params)
-        requestvars = httpverb + epoch + params_string + resourcepath
+        if isinstance(data, dict):
+            data = json.dumps(data)
+        requestvars = httpverb + epoch + data + resourcepath
 
         #Construct signature
         hmac_hash = hmac.new(self.access_key.encode(), msg=requestvars.encode(),
@@ -217,19 +216,19 @@ class Devicegroup():
         try:
             if "collector" in resourcepath:
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.get(url, data=params_string, headers=headers)
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "GET":
                 headers = {'Content-Type':'application/json', 'Authorization':auth}
-                response = requests.get(url, data=params_string, headers=headers)
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "POST":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.post(url, data=params_string, headers=headers)
+                response = requests.post(url, data=data, headers=headers)
             elif httpverb == "DELETE":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.delete(url, data=params_string, headers=headers)
+                response = requests.delete(url, data=data, headers=headers)
             elif httpverb == "PUT":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.put(url, data=params_string, headers=headers)
+                response = requests.put(url, data=data, headers=headers)
         except Exception as error:
             self.change = False
             self.module.fail_json(
@@ -244,21 +243,18 @@ class Devicegroup():
         self.module.debug("Running LogicMonitor.get_group...")
 
         self.module.debug("Making REST API call to /device/groups endpoint")
-        resp = self.rest_api("GET", "/device/groups", "")
+        resp = self.rest_api("GET", "/device/groups", "?filter=name~{}".format(name))
+
         if resp["status"] == 200:
             self.module.debug("REST API called succeeded")
-            groups = resp["data"]
-            self.module.debug("Looking for group matching " + name)
-            for group in groups["items"]:
-                if group["name"] == name:
-                    self.module.debug("Group match found")
-                    return group
-            self.module.debug("No group match found")
+            if  len(resp["data"]["items"]) > 0:
+                return resp["data"]["items"][0]
+            self.module.debug("No device match found")
             return None
         self.module.debug("REST API call failed")
         self.change = False
         self.module.fail_json(
-            msg="Error: unable to get the device groups " +
+            msg="Error: unable to get the group " +
             "Error_msg: {}".format(resp), changed=self.change, failed=True)
 
     def create_or_update(self):
@@ -270,7 +266,7 @@ class Devicegroup():
             if self.is_changed():
                 self.module.debug("Group exists. Updating its parameters")
                 body = self._build_host_group_dict()
-                resp = self.rest_api("PUT", "/device/groups/{}".format(str(self.info["id"])), body)
+                resp = self.rest_api("PUT", "/device/groups/{}".format(str(self.info["id"])), "", body)
                 return resp
             else:
                 self.change = False
@@ -320,11 +316,14 @@ class Devicegroup():
             self.module.exit_json(changed=self.change, success=True)
         body = self._build_host_group_dict()
         self.module.debug("Making REST API call to '/device/groups'")
-        resp = self.rest_api("POST", "/device/groups", body)
+        resp = self.rest_api("POST", "/device/groups", "", body)
         if "name" in resp.keys() and resp["name"] == self.name:
             self.module.debug("REST API call succeeded")
             self.module.debug("Group created")
             return resp
+        # errorCode - 1400,1409: Device group with the provided name and params already exists.
+        if resp['errorCode'] == 1409 or resp['errorCode'] == 1400:
+            self.module.exit_json(msg=resp, changed=False, success=True)
         self.module.debug("REST API call failed")
         self.change = False
         self.module.fail_json(
@@ -337,7 +336,7 @@ class Devicegroup():
         self.module.debug("Running LogicMonitor get_collector_groups...")
 
         self.module.debug("Making REST API call to '/setting/collector/groups'")
-        resp = self.rest_api("GET", "/setting/collector/groups", "")
+        resp = self.rest_api("GET", "/setting/collector/groups")
         if resp["total"] >= 0:
             self.module.debug("REST API call succeeded")
             return resp
@@ -398,7 +397,7 @@ class Devicegroup():
                 self.change = False
                 self.module.exit_json(changed=self.change, success=True)
             self.module.debug("Making REST API call to 'deleteDevicegroup'")
-            resp = self.rest_api("DELETE", "/device/groups/{}".format(str(self.info["id"])), "")
+            resp = self.rest_api("DELETE", "/device/groups/{}".format(str(self.info["id"])))
             self.module.exit_json(changed=self.change, msg=resp)
             self.module.debug("REST API call succeeded")
             return resp
