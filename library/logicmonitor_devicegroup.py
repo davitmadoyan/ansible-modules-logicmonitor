@@ -243,7 +243,7 @@ class Devicegroup():
         self.module.debug("Running LogicMonitor.get_group...")
 
         self.module.debug("Making REST API call to /device/groups endpoint")
-        resp = self.rest_api("GET", "/device/groups", "?filter=name~{}".format(name))
+        resp = self.rest_api("GET", "/device/groups", "?filter=name:{}".format(name))
 
         if resp["status"] == 200:
             self.module.debug("REST API called succeeded")
