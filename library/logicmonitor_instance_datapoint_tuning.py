@@ -50,7 +50,7 @@ options:
       - The display name of a datasource in your Logicmonitor account.
     required: true
     default: None
-  instance_name:
+  instance_displayname:
     description:
       - The name of an instance of a datasource for a device in your Logicmonitor account.
     required: true
@@ -90,7 +90,7 @@ Examples = '''
       access_key: '{{ access_key }}'
       device_displayname: 'device.example.com'
       datasource_displayname: 'Interfaces (64 bit)-'
-      instance_name: 'Ethernet1/1'
+      instance_displayname: 'Ethernet1/1'
       alert_disable: 'true'
 ---
 #example of disabling alerting for status datapoint of Ethernet1/1 interface
@@ -109,7 +109,7 @@ Examples = '''
       access_key: '{{ access_key }}'
       device_displayname: 'device.example.com'
       datasource_displayname: 'Interfaces (64 bit)-'
-      instance_name: 'Ethernet1/1'
+      instance_displayname: 'Ethernet1/1'
       datapoint_name: 'Status'
       alert_disable: 'true'
 #example of changing threshold for status datapoint of Ethernet1/1 interface
@@ -128,7 +128,7 @@ Examples = '''
       access_key: '{{ access_key }}'
       device_displayname: 'device.example.com'
       datasource_displayname: 'Interfaces (64 bit)-'
-      instance_name: 'Ethernet1/1'
+      instance_displayname: 'Ethernet1/1'
       datapoint_name: 'Status'
       threshold: '> 1'
 ---
@@ -162,27 +162,26 @@ class Tuning():
 
         self.device_displayname = self.params["device_displayname"]
         self.datasource_displayname = self.params["datasource_displayname"]
-        self.instance_name = self.params["instance_name"]
+        self.instance_displayname = self.params["instance_displayname"]
         self.datapoint_name = self.params["datapoint_name"]
         self.threshold = self.params["threshold"]
         self.alert_disable = self.params["alert_disable"]
 
-    def rest_api(self, httpverb, resourcepath, params):
+    def rest_api(self, httpverb, resourcepath, query_params="", data=""):
         """Make a call to the LogicMonitor REST API
         and return the response"""
         self.module.debug("Running LogicMonitor.REST API")
 
         #Construct URL
-        url = 'https://' + self.company + "." + self.LM_URL + resourcepath
+        url = 'https://' + self.company + '.' + self.LM_URL + resourcepath + query_params
 
         #Get current time in milliseconds
         epoch = str(int(time.time() * 1000))
 
         #Concatenate Request details
-        params_string = ""
-        if isinstance(params, dict):
-            params_string = json.dumps(params)
-        requestvars = httpverb + epoch + params_string + resourcepath
+        if isinstance(data, dict):
+            data = json.dumps(data)
+        requestvars = httpverb + epoch + data + resourcepath
 
         #Construct signature
         hmac_hash = hmac.new(self.access_key.encode(), msg=requestvars.encode(),
@@ -192,18 +191,21 @@ class Tuning():
         #Construct headers and make request
         auth = 'LMv1 ' + self.access_id + ':' + signature.decode() + ':' + epoch
         try:
-            headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
             if "collector" in resourcepath:
-                response = requests.get(url, data=params_string, headers=headers)
+                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "GET":
                 headers = {'Content-Type':'application/json', 'Authorization':auth}
-                response = requests.get(url, data=params_string, headers=headers)
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "POST":
-                response = requests.post(url, data=params_string, headers=headers)
+                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
+                response = requests.post(url, data=data, headers=headers)
             elif httpverb == "DELETE":
-                response = requests.delete(url, data=params_string, headers=headers)
+                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
+                response = requests.delete(url, data=data, headers=headers)
             elif httpverb == "PUT":
-                response = requests.put(url, data=params_string, headers=headers)
+                headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
+                response = requests.put(url, data=data, headers=headers)
         except Exception as error:
             self.change = False
             self.module.fail_json(
@@ -218,7 +220,7 @@ class Tuning():
         self.module.debug("Running LogicMonitor.get_device...")
 
         self.module.debug("Making REST API call to /device/devices endpoint")
-        resp = self.rest_api("GET", "/device/devices", "")
+        resp = self.rest_api("GET", "/device/devices", "?filter=displayName:{}".format(self.device_displayname))
         return self.parse_response(resp, "displayName", self.device_displayname)
 
     def get_datasource(self, device_id):
@@ -227,7 +229,7 @@ class Tuning():
         self.module.debug("Running LogicMonitor.get_datasource...")
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources endpoint")
-        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources".format(device_id), "")
+        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources".format(device_id), "?filter=dataSourceDisplayName:{}".format(self.datasource_displayname))
         return self.parse_response(resp, "dataSourceDisplayName", self.datasource_displayname)
 
     def get_instance(self, device_id, datasource_id):
@@ -236,8 +238,8 @@ class Tuning():
         self.module.debug("Running LogicMonitor.get_instance...")
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources/datasource_id/instances endpoint")
-        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances".format(device_id, datasource_id), "")
-        return self.parse_response(resp, "displayName", self.instance_name)
+        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances".format(device_id, datasource_id), "?filter=displayName~{}".format(self.instance_displayname))
+        return self.parse_response(resp, "displayName", self.instance_displayname)
 
     def get_datapoint(self, device_id, datasource_id, instance_id):
         """Returns a JSON datapoint object for the datapoint matching the
@@ -245,7 +247,7 @@ class Tuning():
         self.module.debug("Running LogicMonitor.get_datapoint...")
 
         self.module.debug("Making REST API call to /device/devices/device_id/devicedatasources/datasource_id/instances/instance_id/alertsettings endpoint")
-        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings".format(device_id, datasource_id, instance_id), "")
+        resp = self.rest_api("GET", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings".format(device_id, datasource_id, instance_id), "?filter=dataPointName:{}".format(self.datapoint_name))
         return self.parse_response(resp, "dataPointName", self.datapoint_name)
 
     def parse_response(self, resp, matching_key, matching_param):
@@ -254,7 +256,7 @@ class Tuning():
             items = resp["data"]
             self.module.debug("Looking for matching to" + matching_param)
             for item in items["items"]:
-                if item[matching_key] == matching_param:
+                if matching_param in item[matching_key]:
                     self.module.debug("Match found")
                     return item
             self.module.debug("No match found")
@@ -283,14 +285,14 @@ class Tuning():
                 self.change = False
                 self.module.exit_json(changed=self.change, success=True)
             data["alertExpr"] = self.threshold
-            resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"]), str(self.datapoint["id"])), data)
+            resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"]), str(self.datapoint["id"])), "", data)
             return resp
           else:
             if self.check_mode:
                 self.change = False
                 self.module.exit_json(changed=self.change, success=True)
             data["disableAlerting"] = self.alert_disable
-            resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"]), str(self.datapoint["id"])), data)
+            resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}/alertsettings/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"]), str(self.datapoint["id"])), "", data)
             return resp
         else:
           if self.check_mode:
@@ -299,7 +301,7 @@ class Tuning():
           data["disableAlerting"] = self.alert_disable
           data["displayName"] = self.instance["displayName"]
           data["wildValue"] = self.instance["wildValue"]
-          resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"])), data)
+          resp = self.rest_api("PUT", "/device/devices/{}/devicedatasources/{}/instances/{}".format(str(self.device["id"]), str(self.datasource["id"]), str(self.instance["id"])), "", data)
           return resp
 
 def main():
@@ -313,7 +315,7 @@ def main():
 
         "device_displayname": dict(required=True, default=None),
         "datasource_displayname": dict(required=True, default=None),
-        "instance_name": dict(required=True, default=None),
+        "instance_displayname": dict(required=True, default=None),
         "datapoint_name": dict(required=False, default=None),
         "alert_disable": dict(required=False, default="false"),
         "threshold": dict(required=False, default=None)
