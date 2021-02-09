@@ -79,6 +79,11 @@ options:
     required: false
     default: false
     choices: [true, false]
+  netflow_collector_name:
+    description:
+      - Name of a collector to send the NetFlow data to.
+    required: false
+    default: None
 ...
 '''
 Examples = '''
@@ -101,6 +106,7 @@ Examples = '''
       description: device-1
       host_group_name: test-1
       collector_group_name: test_Collector_group
+      netflow_collector_name: test-collector.example.com
       properties:
         - name: username
           value: password
@@ -178,6 +184,7 @@ class Device():
         self.host_group_name = self.params["host_group_name"]
         self.alert_disable = self.params["alert_disable"]
         self.collector_group_name = self.params["collector_group_name"]
+        self.netflow_collector_name = self.params["netflow_collector_name"]
 
         self.info = self.get_device(self.name)
 
@@ -205,7 +212,7 @@ class Device():
         #Construct headers and make request
         auth = 'LMv1 ' + self.access_id + ':' + signature.decode() + ':' + epoch
         try:
-            if "collector" in resourcepath:
+            if "collector/groups" in resourcepath:
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
                 response = requests.get(url, data=data, headers=headers)
             elif httpverb == "GET":
@@ -371,6 +378,23 @@ class Device():
             msg="No collector group match found " +
             "for {}".format(self.collector_group_name), changed=self.change, failed=True)
 
+    def get_collector_by_name(self, name):
+        """Returns a JSON collector object for the collector matching the
+        specified name"""
+        self.module.debug("Running LogicMonitor.get_collector_by_name...")
+
+        self.module.debug("Making REST API call to /setting/collectors endpoint")
+        resp = self.rest_api("GET", "/setting/collectors", "?filter=description:{}&fields=id,description".format(name))
+
+        if resp["status"] == 200 and resp["data"] != None:
+            self.module.debug("Group match found")
+            return resp["data"]["items"][0]
+        self.module.debug("REST API call failed")
+        self.change = False
+        self.module.fail_json(
+            msg="Error: unable to get the collector " +
+            "Error_msg: {}".format(resp), changed=self.change, failed=True)
+
     def _build_host_dict(self):
         """Returns a dict with device params"""
         if self.host_group_name is None:
@@ -378,6 +402,14 @@ class Device():
         else:
             host_group = self.get_group(self.host_group_name)
             host_group_id = host_group["id"]
+        if self.netflow_collector_name is not None:
+            enble_netflow = "true"
+            netflow_collector_data = self.get_collector_by_name(self.netflow_collector_name)
+            netflow_collector_id = netflow_collector_data["id"]
+        else:
+            enble_netflow = "false"
+            netflow_collector_id = 0
+
         collector_group_data = self.get_collector_group_by_name()
         collector_group_id = collector_group_data["id"]
         body_dict = {"name": self.name,
@@ -387,7 +419,9 @@ class Device():
                      "description": self.description,
                      "customProperties": self.properties,
                      "preferredCollectorId": 0,
-                     "autoBalancedCollectorGroupId": collector_group_id}
+                     "autoBalancedCollectorGroupId": collector_group_id,
+                     "enableNetflow": enble_netflow,
+                     "netflowCollectorId": netflow_collector_id}
         return body_dict
 
     def remove(self):
@@ -431,7 +465,8 @@ def main():
         collector_group_name=dict(required=True, default=None),
         host_group_name=dict(required=True, default=None),
         properties=dict(required=False, default=[], type="list"),
-        alert_disable=dict(required=False, default="false")
+        alert_disable=dict(required=False, default="false"),
+        netflow_collector_name=dict(required=False, default=None)
     )
 
     result = dict(
