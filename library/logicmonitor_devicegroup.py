@@ -263,9 +263,12 @@ class Devicegroup():
         self.module.debug("Running Devicegroup.create_or_update")
 
         if self.info is not None:
-            if self.is_changed():
+            changed, take_manual = self.is_changed()
+            if changed:
                 self.module.debug("Group exists. Updating its parameters")
                 body = self._build_host_group_dict()
+                if take_manual:
+                  body["disableAlerting"] = 'true'
                 resp = self.rest_api("PUT", "/device/groups/{}".format(str(self.info["id"])), "", body)
                 return resp
             else:
@@ -287,6 +290,12 @@ class Devicegroup():
         group = self.info
         properties = self._build_host_group_dict()
         changed = False
+
+        take_manual = False
+        # check if the disableAlerting is set to 'true' manually from the UI and if so don't override it
+        if (str(group["disableAlerting"]).lower() == 'true' and  properties["disableAlerting"].lower() == 'false'):
+            take_manual = True
+
         if properties is not None and group is not None:
             self.module.debug("Comparing simple group properties")
             if (str(group["disableAlerting"]).lower() != properties["disableAlerting"].lower() or
@@ -294,15 +303,15 @@ class Devicegroup():
                     group["parentId"] != properties["parentId"] or
                     group["defaultCollectorGroupId"] != properties["defaultCollectorGroupId"]):
                 changed = True
-                return changed
+                return changed, take_manual
             changed = any(i not in properties["customProperties"] for i in group["customProperties"])
             if changed:
-                return changed
+                return changed, take_manual
             changed = any(i not in group["customProperties"] for i in properties["customProperties"])
-            return changed
+            return changed, take_manual
         else:
             self.module.debug("No property information received")
-            return False
+            return changed, take_manual
 
     def add(self):
         """Idempotent function to ensure that the host
