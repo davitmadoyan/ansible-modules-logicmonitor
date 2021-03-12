@@ -278,9 +278,12 @@ class Device():
         self.module.debug("Running Device.create_or_update")
 
         if self.info is not None:
-            if self.is_changed():
+            changed, take_manual = self.is_changed()
+            if changed:
                 self.module.debug("Device exists. Updating its parameters")
                 body = self._build_host_dict()
+                if take_manual:
+                  body["disableAlerting"] = 'true'
                 resp = self.rest_api("PUT", "/device/devices/{}".format(str(self.info["id"])), "", body)
                 return resp
             else:
@@ -302,6 +305,12 @@ class Device():
         device = self.info
         properties = self._build_host_dict()
         changed = False
+
+        take_manual = False
+        # check if the disableAlerting is set to 'true' manually from the UI and if so don't override it
+        if (str(device["disableAlerting"]).lower() == 'true' and  properties["disableAlerting"].lower() == 'false'):
+            take_manual = True
+
         if properties is not None and device is not None:
             self.module.debug("Comparing simple device properties")
             if (str(device["disableAlerting"]).lower() != properties["disableAlerting"].lower() or
@@ -310,15 +319,15 @@ class Device():
                     str(device["hostGroupIds"]) != str(properties["hostGroupIds"]) or
                     device["preferredCollectorGroupId"] != properties["autoBalancedCollectorGroupId"]):
                 changed = True
-                return changed
+                return changed, take_manual
             changed = any(i not in properties["customProperties"] for i in device["customProperties"])
             if changed:
-                return changed
+                return changed, take_manual
             changed = any(i not in device["customProperties"] for i in properties["customProperties"])
-            return changed
+            return changed, take_manual
         else:
             self.module.debug("No property information received")
-            return False
+            return changed, take_manual
 
     def add(self):
         """Idempotent function to ensure that the host
