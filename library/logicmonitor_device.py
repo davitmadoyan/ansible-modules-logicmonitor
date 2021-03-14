@@ -79,6 +79,11 @@ options:
     required: false
     default: false
     choices: [true, false]
+  netflow_collector_name:
+    description:
+      - Name of a collector to send the NetFlow data to.
+    required: false
+    default: None
 ...
 '''
 Examples = '''
@@ -101,6 +106,7 @@ Examples = '''
       description: device-1
       host_group_name: test-1
       collector_group_name: test_Collector_group
+      netflow_collector_name: test-collector.example.com
       properties:
         - name: username
           value: password
@@ -178,25 +184,25 @@ class Device():
         self.host_group_name = self.params["host_group_name"]
         self.alert_disable = self.params["alert_disable"]
         self.collector_group_name = self.params["collector_group_name"]
+        self.netflow_collector_name = self.params["netflow_collector_name"]
 
         self.info = self.get_device(self.name)
 
-    def rest_api(self, httpverb, resourcepath, params):
+    def rest_api(self, httpverb, resourcepath, query_params="", data=""):
         """Make a call to the LogicMonitor REST API
         and return the response"""
         self.module.debug("Running LogicMonitor.REST API")
 
         #Construct URL
-        url = 'https://' + self.company + "." + self.lm_url + resourcepath
+        url = 'https://' + self.company + '.' + self.lm_url + resourcepath + query_params
 
         #Get current time in milliseconds
         epoch = str(int(time.time() * 1000))
 
         #Concatenate Request details
-        params_string = ""
-        if isinstance(params, dict):
-            params_string = json.dumps(params)
-        requestvars = httpverb + epoch + params_string + resourcepath
+        if isinstance(data, dict):
+            data = json.dumps(data)
+        requestvars = httpverb + epoch + data + resourcepath
 
         #Construct signature
         hmac_hash = hmac.new(self.access_key.encode(), msg=requestvars.encode(),
@@ -206,21 +212,21 @@ class Device():
         #Construct headers and make request
         auth = 'LMv1 ' + self.access_id + ':' + signature.decode() + ':' + epoch
         try:
-            if "collector" in resourcepath:
+            if "collector/groups" in resourcepath:
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.get(url, data=params_string, headers=headers)
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "GET":
                 headers = {'Content-Type':'application/json', 'Authorization':auth}
-                response = requests.get(url, data=params_string, headers=headers)
+                response = requests.get(url, data=data, headers=headers)
             elif httpverb == "POST":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.post(url, data=params_string, headers=headers)
+                response = requests.post(url, data=data, headers=headers)
             elif httpverb == "DELETE":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.delete(url, data=params_string, headers=headers)
+                response = requests.delete(url, data=data, headers=headers)
             elif httpverb == "PUT":
                 headers = {'Content-Type':'application/json', 'x-version':'3', 'Authorization':auth}
-                response = requests.put(url, data=params_string, headers=headers)
+                response = requests.put(url, data=data, headers=headers)
         except Exception as error:
             self.change = False
             self.module.fail_json(
@@ -235,21 +241,18 @@ class Device():
         self.module.debug("Running LogicMonitor.get_device...")
 
         self.module.debug("Making REST API call to /device/devices endpoint")
-        resp = self.rest_api("GET", "/device/devices", "")
+        resp = self.rest_api("GET", "/device/devices", "?filter=name:{}".format(name))
+
         if resp["status"] == 200:
             self.module.debug("REST API called succeeded")
-            devices = resp["data"]
-            self.module.debug("Looking for device matching " + name)
-            for device in devices["items"]:
-                if device["name"] == name:
-                    self.module.debug("device match found")
-                    return device
+            if  len(resp["data"]["items"]) > 0:
+                return resp["data"]["items"][0]
             self.module.debug("No device match found")
             return None
         self.module.debug("REST API call failed")
         self.change = False
         self.module.fail_json(
-            msg="Error: unable to get the devices " +
+            msg="Error: unable to get the device " +
             "Error_msg: {}".format(resp), changed=self.change, failed=True)
 
     def get_group(self, name):
@@ -258,21 +261,15 @@ class Device():
         self.module.debug("Running LogicMonitor.get_group...")
 
         self.module.debug("Making REST API call to /device/groups endpoint")
-        resp = self.rest_api("GET", "/device/groups", "")
-        if resp["status"] == 200:
-            self.module.debug("REST API called succeeded")
-            groups = resp["data"]
-            self.module.debug("Looking for group matching " + name)
-            for group in groups["items"]:
-                if group["name"] == name:
-                    self.module.debug("Group match found")
-                    return group
-            self.module.debug("No group match found")
-            return None
+        resp = self.rest_api("GET", "/device/groups", "?filter=name:{}&fields=id,name".format(name))
+
+        if resp["status"] == 200 and resp["data"] != None:
+            self.module.debug("Group match found")
+            return resp["data"]["items"][0]
         self.module.debug("REST API call failed")
         self.change = False
         self.module.fail_json(
-            msg="Error: unable to get the device groups " +
+            msg="Error: unable to get the group " +
             "Error_msg: {}".format(resp), changed=self.change, failed=True)
 
     def create_or_update(self):
@@ -284,7 +281,7 @@ class Device():
             if self.is_changed():
                 self.module.debug("Device exists. Updating its parameters")
                 body = self._build_host_dict()
-                resp = self.rest_api("PUT", "/device/devices/{}".format(str(self.info["id"])), body)
+                resp = self.rest_api("PUT", "/device/devices/{}".format(str(self.info["id"])), "", body)
                 return resp
             else:
                 self.change = False
@@ -335,7 +332,7 @@ class Device():
             self.module.exit_json(changed=self.change, success=True)
         body = self._build_host_dict()
         self.module.debug("Making REST API call to '/device/devices'")
-        resp = self.rest_api("POST", "/device/devices", body)
+        resp = self.rest_api("POST", "/device/devices", "", body)
         if "name" in resp.keys() and resp["name"] == self.name:
             self.module.debug("REST API call succeeded")
             self.module.debug("device created")
@@ -352,7 +349,7 @@ class Device():
         self.module.debug("Running LogicMonitor get_collector_groups...")
 
         self.module.debug("Making REST API call to '/setting/collector/groups'")
-        resp = self.rest_api("GET", "/setting/collector/groups", "")
+        resp = self.rest_api("GET", "/setting/collector/groups")
         if resp["total"] >= 0:
             self.module.debug("REST API call succeeded")
             return resp
@@ -381,6 +378,23 @@ class Device():
             msg="No collector group match found " +
             "for {}".format(self.collector_group_name), changed=self.change, failed=True)
 
+    def get_collector_by_name(self, name):
+        """Returns a JSON collector object for the collector matching the
+        specified name"""
+        self.module.debug("Running LogicMonitor.get_collector_by_name...")
+
+        self.module.debug("Making REST API call to /setting/collectors endpoint")
+        resp = self.rest_api("GET", "/setting/collectors", "?filter=description:{}&fields=id,description".format(name))
+
+        if resp["status"] == 200 and resp["data"] != None:
+            self.module.debug("Group match found")
+            return resp["data"]["items"][0]
+        self.module.debug("REST API call failed")
+        self.change = False
+        self.module.fail_json(
+            msg="Error: unable to get the collector " +
+            "Error_msg: {}".format(resp), changed=self.change, failed=True)
+
     def _build_host_dict(self):
         """Returns a dict with device params"""
         if self.host_group_name is None:
@@ -388,6 +402,14 @@ class Device():
         else:
             host_group = self.get_group(self.host_group_name)
             host_group_id = host_group["id"]
+        if self.netflow_collector_name is not None:
+            enble_netflow = "true"
+            netflow_collector_data = self.get_collector_by_name(self.netflow_collector_name)
+            netflow_collector_id = netflow_collector_data["id"]
+        else:
+            enble_netflow = "false"
+            netflow_collector_id = 0
+
         collector_group_data = self.get_collector_group_by_name()
         collector_group_id = collector_group_data["id"]
         body_dict = {"name": self.name,
@@ -397,7 +419,9 @@ class Device():
                      "description": self.description,
                      "customProperties": self.properties,
                      "preferredCollectorId": 0,
-                     "autoBalancedCollectorGroupId": collector_group_id}
+                     "autoBalancedCollectorGroupId": collector_group_id,
+                     "enableNetflow": enble_netflow,
+                     "netflowCollectorId": netflow_collector_id}
         return body_dict
 
     def remove(self):
@@ -413,7 +437,7 @@ class Device():
                 self.change = False
                 self.module.exit_json(changed=self.change, success=True)
             self.module.debug("Making REST API call to 'deleteDevice'")
-            resp = self.rest_api("DELETE", "/device/devices/{}".format(str(self.info["id"])), "")
+            resp = self.rest_api("DELETE", "/device/devices/{}".format(str(self.info["id"])))
             self.module.exit_json(changed=self.change, msg=resp)
             self.module.debug("REST API call succeeded")
             return resp
@@ -441,7 +465,8 @@ def main():
         collector_group_name=dict(required=True, default=None),
         host_group_name=dict(required=True, default=None),
         properties=dict(required=False, default=[], type="list"),
-        alert_disable=dict(required=False, default="false")
+        alert_disable=dict(required=False, default="false"),
+        netflow_collector_name=dict(required=False, default=None)
     )
 
     result = dict(
