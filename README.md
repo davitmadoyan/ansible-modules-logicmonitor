@@ -34,4 +34,4 @@ ansible-doc logicmonitor_device --module-path=/path/to/the/module/logicmonitor_d
 Author Information
 ------------------
 
-- Davit Madoyan <davit.madoyan@epicgames.com>
+- Davit Madoyan <mad.davit.89@gmail.com>
