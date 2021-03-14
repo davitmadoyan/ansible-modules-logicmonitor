@@ -15,7 +15,7 @@ Install the modules in `./roles` directory at the playbook level using `ansible-
 #### Example
 ```yaml
 ---
-- src: 'git+https://github.ol.epicgames.net/IT/ansible-modules-logicmonitor.git'
+- src: 'git+https://github.com/davitmadoyan/ansible-modules-logicmonitor.git'
   name: 'ansible-modules-logicmonitor'
   version: 'v1.1.0'
 ```
