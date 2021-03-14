@@ -1,6 +1,9 @@
 ansible-modules-logicmonitor
 =========
-Ansible modules for interacting with Logicmonitor API to create, update or remove Logicmonitor devicegroups and devices.
+Ansible modules for interacting with Logicmonitor API to 
+- `logicmonitor_devicegroup:` create, update or remove Logicmonitor devicegroups
+- `logicmonitor_deviceg:` create, update or remove Logicmonitor devices
+- `logicmonitor_instance_datapoint_tuning:` enable/disable alerting for at instance/datapoint level, tune tresholds at datapoint level
 
 Requirements
 ------------
